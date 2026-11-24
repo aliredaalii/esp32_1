@@ -17,11 +17,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Arduino CLI & ESP32 Core
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          wget -qO arduino-cli.tar.gz https://arduino.cc
-          sudo tar xf arduino-cli.tar.gz -C /usr/local/bin arduino-cli
-          arduino-cli core update-index --additional-urls https://github.io
-          arduino-cli core install esp32:esp32 --additional-urls https://github.io
+          gh release download --repo arduino/arduino-cli --pattern "*Linux_64bit.tar.gz"
+          tar xf arduino-cli_*_Linux_64bit.tar.gz
+          sudo mv arduino-cli /usr/local/bin/
+          ESP_URL="https:""//espressif.github.io/arduino-esp32/package_esp32_index.json"
+          arduino-cli core update-index --additional-urls "$ESP_URL"
+          arduino-cli core install esp32:esp32 --additional-urls "$ESP_URL"
 
       - name: Compile Sketch
         run: |
