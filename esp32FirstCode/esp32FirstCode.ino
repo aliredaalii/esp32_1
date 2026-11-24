@@ -12,7 +12,8 @@ WebServer server(80);
 DNSServer dnsServer;
 
 const char* GITHUB_BIN_URL = "https://github.com";
-const char* GOOGLE_SCRIPT_URL = "https://google.com";
+// الرابط السحابي الجديد الخاص بك
+const char* GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwd6iXhOH27eGQ1BJG0ZvocOzS3L_zSSRib_0qUnHLN9vrSVkgwusCXkyZ7jpkhVP_2/exec";
 
 const char* AP_SSID = "Esp32_setup_network";
 const char* AP_PASS = "12345678";
@@ -22,12 +23,46 @@ String saved_ssid = "";
 String saved_pass = "";
 unsigned long lastCheck = 0;
 
+void sendLog(String msg) {
+  msg.replace(" ", "%20");
+  WiFiClientSecure c;
+  c.setInsecure();
+  HTTPClient h;
+  h.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  h.begin(c, String(GOOGLE_SCRIPT_URL) + "?action=log&msg=" + msg);
+  h.GET();
+  h.end();
+}
+
 void checkGitHubUpdate() {
   if (WiFi.status() != WL_CONNECTED) return;
+
+  // إيقاف الشبكة المحلية مؤقتاً لتفريغ الذاكرة (RAM) لتحميل ملف GitHub بأمان
+  server.stop();
+  dnsServer.stop();
+  WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_STA);
+  delay(300);
+
   WiFiClientSecure client;
   client.setInsecure();
+  client.setHandshakeTimeout(30);
+
   httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  httpUpdate.update(client, GITHUB_BIN_URL);
+  httpUpdate.rebootOnUpdate(false);
+
+  t_httpUpdate_return ret = httpUpdate.update(client, GITHUB_BIN_URL);
+
+  if (ret == HTTP_UPDATE_OK) {
+    sendLog("Success_Rebooting");
+    delay(500);
+    ESP.restart();
+  } else {
+    String err = "Failed_" + String(httpUpdate.getLastError()) + "_" + httpUpdate.getLastErrorString();
+    sendLog(err);
+    delay(1000);
+    ESP.restart();
+  }
 }
 
 void syncWithCloud() {
@@ -51,21 +86,19 @@ void syncWithCloud() {
         String otaFlag = payload.substring(sep + 1);
         otaFlag.trim();
 
-        // تشغيل أو إطفاء اللمبة مباشرة
         if (ledVal == "1") {
-          digitalWrite(LED_PIN, LOW);  // تشغيل
+          digitalWrite(LED_PIN, LOW);
         } else if (ledVal == "0") {
-          digitalWrite(LED_PIN, HIGH); // إطفاء
+          digitalWrite(LED_PIN, HIGH);
         }
 
-        // سحب التحديث من GitHub عند الضغط على زر التحديث في الموقع
         if (otaFlag.length() > 0) {
           http.end();
           WiFiClientSecure c2;
           c2.setInsecure();
           HTTPClient h2;
           h2.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-          h2.begin(c2, String(GOOGLE_SCRIPT_URL) + "?action=clear_ota");
+          h2.begin(c2, String(GOOGLE_SCRIPT_URL) + "?action=clear_ota&msg=Downloading...");
           h2.GET();
           h2.end();
           
@@ -120,13 +153,6 @@ void handleSaveWiFi() {
 void setup() {
   Serial.begin(115200);
   pinMode(LED_PIN, OUTPUT);
-  digitalWrite(LED_PIN, HIGH);
-
-  // علامة التحديث الجديد: وميض 4 مرات سريعة فور إقلاع البوردة
-  for (int i = 0; i < 8; i++) {
-    digitalWrite(LED_PIN, !digitalRead(LED_PIN));
-    delay(120);
-  }
   digitalWrite(LED_PIN, HIGH);
 
   preferences.begin("wifi-creds", true);
