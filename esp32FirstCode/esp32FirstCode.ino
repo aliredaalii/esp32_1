@@ -73,10 +73,7 @@ void checkGitHubUpdate() {
 }
 
 void syncWithCloud() {
-  if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi Disconnected!");
-    return;
-  }
+  if (WiFi.status() != WL_CONNECTED) return;
 
   WiFiClientSecure client;
   client.setInsecure();
@@ -87,11 +84,9 @@ void syncWithCloud() {
   String url = String(GOOGLE_SCRIPT_URL) + "?action=read";
   if (http.begin(client, url)) {
     int httpCode = http.GET();
-    Serial.println("Google HTTP Code: " + String(httpCode));
     if (httpCode == 200) {
       String payload = http.getString();
       payload.trim();
-      Serial.println("Payload: " + payload);
       
       int sep = payload.indexOf('|');
       if (sep != -1) {
@@ -121,8 +116,6 @@ void syncWithCloud() {
       }
     }
     http.end();
-  } else {
-    Serial.println("HTTP Begin Failed!");
   }
 }
 
@@ -178,8 +171,6 @@ void setup() {
   bool connected = false;
   if (saved_ssid != "") {
     WiFi.mode(WIFI_STA);
-    // ضبط Google DNS (8.8.8.8) مع الإبقاء على IP الراوتر التلقائي
-    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, IPAddress(8, 8, 8, 8), IPAddress(1, 1, 1, 1));
     WiFi.setTxPower(WIFI_POWER_8_5dBm);
     WiFi.begin(saved_ssid.c_str(), saved_pass.c_str());
     
@@ -193,7 +184,6 @@ void setup() {
       connected = true;
       WiFi.setSleep(false);
       digitalWrite(LED_PIN, HIGH);
-      Serial.println("\nConnected! IP: " + WiFi.localIP().toString());
     }
   }
 
