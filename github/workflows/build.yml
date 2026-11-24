@@ -1,0 +1,36 @@
+name: Build ESP32-C3 Firmware
+
+on:
+  push:
+    paths:
+      - 'esp32FirstCode/esp32FirstCode.ino'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Arduino CLI
+        uses: arduino/setup-arduino-cli@v2
+
+      - name: Install ESP32 Core
+        run: |
+          arduino-cli config init
+          arduino-cli config set board_manager.additional_urls https://github.io
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+
+      - name: Compile Sketch
+        run: |
+          arduino-cli compile --fqbn esp32:esp32:esp32c3:CDCOnBoot=cdc --output-dir ./build esp32FirstCode
+
+      - name: Publish Firmware Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          files: build/esp32FirstCode.ino.bin
