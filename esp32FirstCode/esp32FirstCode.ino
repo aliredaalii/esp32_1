@@ -2,7 +2,6 @@
 #include <WebServer.h>
 #include <DNSServer.h>
 #include <HTTPClient.h>
-#include <HTTPUpdate.h>
 #include <WiFiClientSecure.h>
 #include <Preferences.h>
 #include <Update.h>
@@ -12,8 +11,7 @@ WebServer server(80);
 DNSServer dnsServer;
 
 const char* GITHUB_BIN_URL = "https://github.com";
-// الرابط السحابي الجديد الخاص بك
-const char* GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwd6iXhOH27eGQ1BJG0ZvocOzS3L_zSSRib_0qUnHLN9vrSVkgwusCXkyZ7jpkhVP_2/exec";
+const char* GOOGLE_SCRIPT_URL = "https://google.com";
 
 const char* AP_SSID = "Esp32_setup_network";
 const char* AP_PASS = "12345678";
@@ -34,10 +32,10 @@ void sendLog(String msg) {
   h.end();
 }
 
+// تحميل وتثبيت التحديث من GitHub عبر HTTPClient + Update مباشرة (تتجاوز خطأ -101)
 void checkGitHubUpdate() {
   if (WiFi.status() != WL_CONNECTED) return;
 
-  // إيقاف الشبكة المحلية مؤقتاً لتفريغ الذاكرة (RAM) لتحميل ملف GitHub بأمان
   server.stop();
   dnsServer.stop();
   WiFi.softAPdisconnect(true);
@@ -48,21 +46,43 @@ void checkGitHubUpdate() {
   client.setInsecure();
   client.setHandshakeTimeout(30);
 
-  httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  httpUpdate.rebootOnUpdate(false);
+  HTTPClient http;
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setTimeout(30000);
 
-  t_httpUpdate_return ret = httpUpdate.update(client, GITHUB_BIN_URL);
+  if (http.begin(client, GITHUB_BIN_URL)) {
+    int httpCode = http.GET();
+    if (httpCode == HTTP_CODE_OK) {
+      int contentLength = http.getSize();
+      WiFiClient* stream = http.getStreamPtr();
 
-  if (ret == HTTP_UPDATE_OK) {
-    sendLog("Success_Rebooting");
-    delay(500);
-    ESP.restart();
+      // تمرير حجم الملف أو UPDATE_SIZE_UNKNOWN إذا لم يُرسل الحجم
+      size_t updateSize = (contentLength > 0) ? (size_t)contentLength : UPDATE_SIZE_UNKNOWN;
+
+      if (Update.begin(updateSize)) {
+        size_t written = Update.writeStream(*stream);
+        if (Update.end(true) && Update.isFinished()) {
+          http.end();
+          sendLog("Success_Rebooting_(" + String(written) + "_bytes)");
+          delay(500);
+          ESP.restart();
+          return;
+        } else {
+          sendLog("Update_End_Err_" + String(Update.getError()));
+        }
+      } else {
+        sendLog("No_Space_Err_" + String(Update.getError()));
+      }
+    } else {
+      sendLog("HTTP_Err_" + String(httpCode));
+    }
+    http.end();
   } else {
-    String err = "Failed_" + String(httpUpdate.getLastError()) + "_" + httpUpdate.getLastErrorString();
-    sendLog(err);
-    delay(1000);
-    ESP.restart();
+    sendLog("Begin_Failed");
   }
+
+  delay(1000);
+  ESP.restart();
 }
 
 void syncWithCloud() {
