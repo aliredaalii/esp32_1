@@ -11,10 +11,8 @@ Preferences preferences;
 WebServer server(80);
 DNSServer dnsServer;
 
-// رابط التحديث التلقائي الخاص بمستودعك على GitHub
 const char* GITHUB_BIN_URL = "https://github.com";
-// رابط صفحتك السحابية على Google
-const char* GOOGLE_SCRIPT_URL = "https://google.com";
+const char* GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbySJPgvgbPHD6JlYhaxWIHx752pHUr53FjoTrueu35NYJyCFQIScBUc16gBSrZ2FMiy/exec";
 
 const char* AP_SSID = "Esp32_setup_network";
 const char* AP_PASS = "12345678";
@@ -22,7 +20,6 @@ const char* AP_PASS = "12345678";
 const int LED_PIN = 8;
 String saved_ssid = "";
 String saved_pass = "";
-String lastLedState = "";
 unsigned long lastCheck = 0;
 
 void checkGitHubUpdate() {
@@ -30,11 +27,7 @@ void checkGitHubUpdate() {
   WiFiClientSecure client;
   client.setInsecure();
   httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  
-  t_httpUpdate_return ret = httpUpdate.update(client, GITHUB_BIN_URL);
-  if (ret == HTTP_UPDATE_FAILED) {
-    Serial.printf("GitHub OTA Error: %s\n", httpUpdate.getLastErrorString().c_str());
-  }
+  httpUpdate.update(client, GITHUB_BIN_URL);
 }
 
 void syncWithCloud() {
@@ -58,19 +51,14 @@ void syncWithCloud() {
         String otaFlag = payload.substring(sep + 1);
         otaFlag.trim();
 
-        // 1. وميض 5 مرات عند الضغط على الزر ثم التثبيت
-        if ((ledVal == "1" || ledVal == "0") && ledVal != lastLedState) {
-          lastLedState = ledVal;
-          for (int i = 0; i < 5; i++) {
-            digitalWrite(LED_PIN, LOW);
-            delay(200);
-            digitalWrite(LED_PIN, HIGH);
-            delay(200);
-          }
-          digitalWrite(LED_PIN, (ledVal == "1") ? LOW : HIGH);
+        // تشغيل أو إطفاء اللمبة مباشرة
+        if (ledVal == "1") {
+          digitalWrite(LED_PIN, LOW);  // تشغيل
+        } else if (ledVal == "0") {
+          digitalWrite(LED_PIN, HIGH); // إطفاء
         }
 
-        // 2. سحب التحديث الجديد من GitHub عند وجود أمر في الخلية B1
+        // سحب التحديث من GitHub عند الضغط على زر التحديث في الموقع
         if (otaFlag.length() > 0) {
           http.end();
           WiFiClientSecure c2;
@@ -170,4 +158,3 @@ void loop() {
     syncWithCloud();
   }
 }
-
