@@ -18,12 +18,10 @@ jobs:
 
       - name: Install Arduino CLI & ESP32 Core
         run: |
-          wget -qO arduino-cli.tar.gz https://downloads.arduino.cc/arduino-cli/arduino-cli_latest_Linux_64bit.tar.gz
+          wget -qO arduino-cli.tar.gz https://arduino.cc
           sudo tar xf arduino-cli.tar.gz -C /usr/local/bin arduino-cli
-          arduino-cli config init
-          arduino-cli config set board_manager.additional_urls https://github.io
-          arduino-cli core update-index
-          arduino-cli core install esp32:esp32
+          arduino-cli core update-index --additional-urls https://github.io
+          arduino-cli core install esp32:esp32 --additional-urls https://github.io
 
       - name: Compile Sketch
         run: |
