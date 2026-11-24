@@ -31,9 +31,9 @@ jobs:
         run: |
           arduino-cli compile --fqbn esp32:esp32:esp32c3:CDCOnBoot=cdc --output-dir ./build esp32FirstCode
 
-      - name: Publish Firmware Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: latest
-          files: build/esp32FirstCode.ino.bin
-          overwrite_files: true
+      - name: Force Replace Release File
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create latest --title "latest" --notes "Auto build" || true
+          gh release upload latest build/esp32FirstCode.ino.bin --clobber
