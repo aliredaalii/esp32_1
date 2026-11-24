@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'esp32FirstCode/esp32FirstCode.ino'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,11 +16,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Arduino CLI
-        uses: arduino/setup-arduino-cli@v2
-
-      - name: Install ESP32 Core
+      - name: Install Arduino CLI & ESP32 Core
         run: |
+          curl -fsSL https://githubusercontent.com | sh
+          sudo mv bin/arduino-cli /usr/local/bin/
           arduino-cli config init
           arduino-cli config set board_manager.additional_urls https://github.io
           arduino-cli core update-index
