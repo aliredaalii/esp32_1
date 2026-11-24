@@ -36,3 +36,4 @@ jobs:
         with:
           tag_name: latest
           files: build/esp32FirstCode.ino.bin
+          overwrite_files: true
