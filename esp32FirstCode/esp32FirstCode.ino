@@ -19,6 +19,7 @@ const char* AP_PASS = "12345678";
 const int LED_PIN = 8;
 String saved_ssid = "";
 String saved_pass = "";
+bool isAPMode = false;
 unsigned long lastCheck = 0;
 
 void sendLog(String msg) {
@@ -32,15 +33,8 @@ void sendLog(String msg) {
   h.end();
 }
 
-// تحميل وتثبيت التحديث من GitHub عبر HTTPClient + Update مباشرة (تتجاوز خطأ -101)
 void checkGitHubUpdate() {
   if (WiFi.status() != WL_CONNECTED) return;
-
-  server.stop();
-  dnsServer.stop();
-  WiFi.softAPdisconnect(true);
-  WiFi.mode(WIFI_STA);
-  delay(300);
 
   WiFiClientSecure client;
   client.setInsecure();
@@ -55,8 +49,6 @@ void checkGitHubUpdate() {
     if (httpCode == HTTP_CODE_OK) {
       int contentLength = http.getSize();
       WiFiClient* stream = http.getStreamPtr();
-
-      // تمرير حجم الملف أو UPDATE_SIZE_UNKNOWN إذا لم يُرسل الحجم
       size_t updateSize = (contentLength > 0) ? (size_t)contentLength : UPDATE_SIZE_UNKNOWN;
 
       if (Update.begin(updateSize)) {
@@ -77,28 +69,29 @@ void checkGitHubUpdate() {
       sendLog("HTTP_Err_" + String(httpCode));
     }
     http.end();
-  } else {
-    sendLog("Begin_Failed");
   }
-
-  delay(1000);
-  ESP.restart();
 }
 
 void syncWithCloud() {
-  if (WiFi.status() != WL_CONNECTED) return;
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi Disconnected!");
+    return;
+  }
 
   WiFiClientSecure client;
   client.setInsecure();
   HTTPClient http;
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setTimeout(10000);
 
   String url = String(GOOGLE_SCRIPT_URL) + "?action=read";
   if (http.begin(client, url)) {
     int httpCode = http.GET();
+    Serial.println("Google HTTP Code: " + String(httpCode));
     if (httpCode == 200) {
       String payload = http.getString();
       payload.trim();
+      Serial.println("Payload: " + payload);
       
       int sep = payload.indexOf('|');
       if (sep != -1) {
@@ -128,6 +121,8 @@ void syncWithCloud() {
       }
     }
     http.end();
+  } else {
+    Serial.println("HTTP Begin Failed!");
   }
 }
 
@@ -165,7 +160,7 @@ void handleSaveWiFi() {
   preferences.putString("pass", p);
   preferences.end();
 
-  server.send(200, "text/html", "<h2 dir='rtl' style='text-align:center;margin-top:50px;'>✅ تم الحفظ، جاري الاتصال...</h2>");
+  server.send(200, "text/html; charset=UTF-8", "<h2 dir='rtl' style='text-align:center;margin-top:50px;'>✅ تم الحفظ، جاري الاتصال...</h2>");
   delay(1500);
   ESP.restart();
 }
@@ -180,34 +175,51 @@ void setup() {
   saved_pass = preferences.getString("pass", "");
   preferences.end();
 
-  WiFi.mode(WIFI_AP_STA);
-  WiFi.setTxPower(WIFI_POWER_8_5dBm);
-  WiFi.softAP(AP_SSID, AP_PASS);
-  dnsServer.start(53, "*", WiFi.softAPIP());
-
+  bool connected = false;
   if (saved_ssid != "") {
+    WiFi.mode(WIFI_STA);
+    // ضبط Google DNS (8.8.8.8) مع الإبقاء على IP الراوتر التلقائي
+    WiFi.config(INADDR_NONE, INADDR_NONE, INADDR_NONE, IPAddress(8, 8, 8, 8), IPAddress(1, 1, 1, 1));
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
     WiFi.begin(saved_ssid.c_str(), saved_pass.c_str());
+    
     int attempts = 0;
-    while (WiFi.status() != WL_CONNECTED && attempts < 24) {
+    while (WiFi.status() != WL_CONNECTED && attempts < 30) {
       delay(500);
       digitalWrite(LED_PIN, !digitalRead(LED_PIN));
       attempts++;
     }
-    digitalWrite(LED_PIN, HIGH);
+    if (WiFi.status() == WL_CONNECTED) {
+      connected = true;
+      WiFi.setSleep(false);
+      digitalWrite(LED_PIN, HIGH);
+      Serial.println("\nConnected! IP: " + WiFi.localIP().toString());
+    }
   }
 
-  server.on("/", HTTP_GET, handleLocalPage);
-  server.on("/save", HTTP_POST, handleSaveWiFi);
-  server.onNotFound(handleLocalPage);
-  server.begin();
+  if (!connected) {
+    isAPMode = true;
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.setTxPower(WIFI_POWER_8_5dBm);
+    WiFi.softAP(AP_SSID, AP_PASS);
+    dnsServer.start(53, "*", WiFi.softAPIP());
+    digitalWrite(LED_PIN, LOW);
+
+    server.on("/", HTTP_GET, handleLocalPage);
+    server.on("/save", HTTP_POST, handleSaveWiFi);
+    server.onNotFound(handleLocalPage);
+    server.begin();
+  }
 }
 
 void loop() {
-  dnsServer.processNextRequest();
-  server.handleClient();
-
-  if (millis() - lastCheck > 2000) {
-    lastCheck = millis();
-    syncWithCloud();
+  if (isAPMode) {
+    dnsServer.processNextRequest();
+    server.handleClient();
+  } else {
+    if (millis() - lastCheck > 2000) {
+      lastCheck = millis();
+      syncWithCloud();
+    }
   }
 }
