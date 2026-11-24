@@ -12,7 +12,7 @@ WebServer server(80);
 DNSServer dnsServer;
 
 const char* GITHUB_BIN_URL = "https://github.com";
-const char* GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbySJPgvgbPHD6JlYhaxWIHx752pHUr53FjoTrueu35NYJyCFQIScBUc16gBSrZ2FMiy/exec";
+const char* GOOGLE_SCRIPT_URL = "https://google.com";
 
 const char* AP_SSID = "Esp32_setup_network";
 const char* AP_PASS = "12345678";
@@ -120,6 +120,13 @@ void handleSaveWiFi() {
 void setup() {
   Serial.begin(115200);
   pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, HIGH);
+
+  // علامة التحديث الجديد: وميض 4 مرات سريعة فور إقلاع البوردة
+  for (int i = 0; i < 8; i++) {
+    digitalWrite(LED_PIN, !digitalRead(LED_PIN));
+    delay(120);
+  }
   digitalWrite(LED_PIN, HIGH);
 
   preferences.begin("wifi-creds", true);
