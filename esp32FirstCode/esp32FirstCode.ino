@@ -124,7 +124,7 @@ void setup() {
   password = prefs.getString("p", "");
   token = prefs.getString("t", "");
   prefs.end();
-  if (!ssid.length() || !token.length()) { startPortal(); return; }
+  if (!ssid.length()) { startPortal(); return; }
   WiFi.mode(WIFI_STA);
   WiFi.setAutoReconnect(true);
   WiFi.begin(ssid.c_str(), password.c_str());
@@ -166,6 +166,7 @@ void loop() {
     if (millis()-lastReconnect>=15000) { lastReconnect=millis(); WiFi.reconnect(); }
     delay(10); return;
   }
+  if (!token.length()) { delay(10); return; }
   if (millis()-lastPoll<5000) { delay(10); return; }
   lastPoll=millis();
   String data=request(String(GOOGLE_URL)+"?action=read&token="+token+
