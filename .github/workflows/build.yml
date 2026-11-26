@@ -1,39 +1,36 @@
 name: Build ESP32-C3 Firmware
-
 on:
   push:
+    branches: [main]
     paths:
-      - 'esp32FirstCode/esp32FirstCode.ino'
+      - 'esp32FirstCode/**'
+      - '.github/workflows/build.yml'
   workflow_dispatch:
-
 permissions:
   contents: write
-
+concurrency:
+  group: esp32-firmware
+  cancel-in-progress: false
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install Arduino CLI & ESP32 Core
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: actions/checkout@v4
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install ESP32 core
         run: |
-          gh release download --repo arduino/arduino-cli --pattern "*Linux_64bit.tar.gz"
-          tar xf arduino-cli_*_Linux_64bit.tar.gz
-          sudo mv arduino-cli /usr/local/bin/
-          ESP_URL="https:""//espressif.github.io/arduino-esp32/package_esp32_index.json"
+          ESP_URL="https://espressif.github.io/arduino-esp32/package_esp32_index.json"
           arduino-cli core update-index --additional-urls "$ESP_URL"
-          arduino-cli core install esp32:esp32 --additional-urls "$ESP_URL"
-
-      - name: Compile Sketch
+          arduino-cli core install esp32:esp32@3.3.0 --additional-urls "$ESP_URL"
+      - name: Compile
         run: |
-          arduino-cli compile --fqbn esp32:esp32:esp32c3:CDCOnBoot=cdc --output-dir ./build esp32FirstCode
-
-      - name: Force Replace Release File
+          arduino-cli compile --fqbn esp32:esp32:esp32c3:CDCOnBoot=cdc,PartitionScheme=default --build-property "compiler.cpp.extra_flags=-DFIRMWARE_VERSION=${{ github.run_number }}" --output-dir ./build esp32FirstCode
+          cp build/esp32FirstCode.ino.bin build/firmware.bin
+          echo "${{ github.run_number }}" > build/version.txt
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create latest --title "latest" --notes "Auto build" || true
-          gh release upload latest build/esp32FirstCode.ino.bin --clobber
+          gh release view latest || gh release create latest --title "latest" --notes "Auto build"
+          gh release upload latest build/firmware.bin --clobber
+          gh release upload latest build/version.txt --clobber
