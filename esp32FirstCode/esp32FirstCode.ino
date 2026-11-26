@@ -20,19 +20,32 @@ String ssid, password, token;
 bool portal = false;
 unsigned long lastPoll = 0, lastReconnect = 0;
 
-String request(const String& url, const String& body = "") {
+int lastGoogleHTTP = 0;
+String lastGoogleReply = "";
+unsigned long lastGoogleCheck = 0;
+
+String request(const String& url, const String& body = "", bool diagnostic = false) {
   WiFiClientSecure client;
   client.setInsecure(); // Bench prototype only; replace with CA validation before deployment.
   HTTPClient http;
   http.setTimeout(12000);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-  if (!http.begin(client, url)) return "";
+  if (!http.begin(client, url)) {
+    if (diagnostic) { lastGoogleHTTP = -1; lastGoogleReply = ""; lastGoogleCheck = millis(); }
+    return "";
+  }
   int status;
   if (body.length()) {
     http.addHeader("Content-Type", "application/x-www-form-urlencoded");
     status = http.POST(body);
   } else status = http.GET();
   String result = status == 200 ? http.getString() : "";
+  if (diagnostic) {
+    lastGoogleHTTP = status;
+    lastGoogleReply = result.substring(0, 160);
+    if (token.length()) lastGoogleReply.replace(token, "[hidden]");
+    lastGoogleCheck = millis();
+  }
   http.end();
   result.trim();
   return result;
@@ -119,7 +132,35 @@ void setup() {
   if (WiFi.status()!=WL_CONNECTED) startPortal();
 }
 
+void printStatus() {
+  bool connected = WiFi.status() == WL_CONNECTED;
+  Serial.println("\n--- ESP32 STATUS ---");
+  Serial.printf("WiFi: %s (status %d)\n", connected ? "CONNECTED" : "DISCONNECTED", (int)WiFi.status());
+  Serial.println("SSID: " + ssid);
+  Serial.println("IP: " + (portal ? WiFi.softAPIP().toString() : WiFi.localIP().toString()));
+  Serial.println("Setup portal: " + String(portal ? "ON" : "OFF"));
+  if (connected) Serial.printf("RSSI: %d dBm\n", WiFi.RSSI());
+  Serial.println("Access key: " + String(token.length() ? "SAVED" : "MISSING"));
+  Serial.printf("Firmware: %ld\n", (long)FIRMWARE_VERSION);
+  Serial.printf("LED: %s\n", digitalRead(LED_PIN)==LOW ? "ON" : "OFF");
+  Serial.printf("Free heap: %lu bytes\n", (unsigned long)ESP.getFreeHeap());
+  Serial.printf("Uptime: %lu seconds\n", millis()/1000);
+  if (connected && token.length()) {
+    request(String(GOOGLE_URL)+"?action=read&token="+token+
+      "&version="+String(FIRMWARE_VERSION)+"&led="+(digitalRead(LED_PIN)==LOW?"1":"0"), "", true);
+  }
+  Serial.printf("Google HTTP: %d\n", lastGoogleHTTP);
+  Serial.println("Google reply: " + lastGoogleReply);
+  Serial.println("Google: " + String(connected && lastGoogleHTTP==200 &&
+    (lastGoogleReply=="0|0" || lastGoogleReply=="0|1" || lastGoogleReply=="1|0" || lastGoogleReply=="1|1") ? "OK" : "NOT CONFIRMED"));
+  Serial.println("--------------------");
+}
+
 void loop() {
+  while (Serial.available()) {
+    int ch = Serial.read();
+    if (ch == 's' || ch == 'S') printStatus();
+  }
   if (portal) { dns.processNextRequest(); server.handleClient(); delay(2); return; }
   if (WiFi.status()!=WL_CONNECTED) {
     if (millis()-lastReconnect>=15000) { lastReconnect=millis(); WiFi.reconnect(); }
@@ -128,7 +169,7 @@ void loop() {
   if (millis()-lastPoll<5000) { delay(10); return; }
   lastPoll=millis();
   String data=request(String(GOOGLE_URL)+"?action=read&token="+token+
-    "&version="+String(FIRMWARE_VERSION)+"&led="+(digitalRead(LED_PIN)==LOW?"1":"0"));
+    "&version="+String(FIRMWARE_VERSION)+"&led="+(digitalRead(LED_PIN)==LOW?"1":"0"), "", true);
   if (data=="0|0" || data=="0|1" || data=="1|0" || data=="1|1") {
     digitalWrite(LED_PIN, data[0]=='1'?LOW:HIGH);
     if (data[2]=='1') {
