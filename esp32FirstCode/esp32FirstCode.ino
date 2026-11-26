@@ -18,6 +18,8 @@ WebServer server(80);
 DNSServer dns;
 String ssid, password, token;
 bool portal = false;
+bool apStarted = false;
+int initialWiFiStatus = -1;
 unsigned long lastPoll = 0, lastReconnect = 0;
 
 int lastGoogleHTTP = 0;
@@ -53,8 +55,9 @@ String request(const String& url, const String& body, bool diagnostic) {
 
 void startPortal() {
   portal = true;
-  WiFi.mode(WIFI_AP);
-  WiFi.softAP("Esp32_setup_network", "12345678");
+  WiFi.mode(WIFI_AP_STA);
+  apStarted = WiFi.softAP("Esp32_setup_network", "12345678", 1, 0);
+  if (!apStarted) { portal = false; return; }
   dns.start(53, "*", WiFi.softAPIP());
   server.on("/", HTTP_GET, []() {
     server.send(200, "text/html", R"HTML(<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font:18px Arial;text-align:center;background:#172033;color:white;padding:20px"><h2>ESP32 Setup</h2><form method="post" action="/save"><p><input name="s" placeholder="Wi-Fi name" required></p><p><input name="p" type="password" placeholder="Wi-Fi password"></p><p><input name="t" type="password" placeholder="Control access key" required></p><button>Save & Restart</button></form></body>)HTML");
@@ -129,7 +132,8 @@ void setup() {
   WiFi.setAutoReconnect(true);
   WiFi.begin(ssid.c_str(), password.c_str());
   for (int i=0; i<40 && WiFi.status()!=WL_CONNECTED; i++) delay(500);
-  if (WiFi.status()!=WL_CONNECTED) startPortal();
+  initialWiFiStatus = (int)WiFi.status();
+  if (WiFi.status()!=WL_CONNECTED || !token.length()) startPortal();
 }
 
 void printStatus() {
@@ -139,6 +143,11 @@ void printStatus() {
   Serial.println("SSID: " + ssid);
   Serial.println("IP: " + (portal ? WiFi.softAPIP().toString() : WiFi.localIP().toString()));
   Serial.println("Setup portal: " + String(portal ? "ON" : "OFF"));
+  Serial.printf("WiFi mode: %d (1=STA, 2=AP, 3=AP_STA)\n", (int)WiFi.getMode());
+  Serial.printf("Initial WiFi status: %d\n", initialWiFiStatus);
+  Serial.println("AP started: " + String(apStarted ? "YES" : "NO"));
+  Serial.println("AP IP: " + WiFi.softAPIP().toString());
+  Serial.println("STA IP: " + WiFi.localIP().toString());
   if (connected) Serial.printf("RSSI: %d dBm\n", WiFi.RSSI());
   Serial.println("Access key: " + String(token.length() ? "SAVED" : "MISSING"));
   Serial.printf("Firmware: %ld\n", (long)FIRMWARE_VERSION);
@@ -161,7 +170,8 @@ void loop() {
     int ch = Serial.read();
     if (ch == 's' || ch == 'S') printStatus();
   }
-  if (portal) { dns.processNextRequest(); server.handleClient(); delay(2); return; }
+  if (portal) { dns.processNextRequest(); server.handleClient(); }
+  if (!ssid.length()) { delay(10); return; }
   if (WiFi.status()!=WL_CONNECTED) {
     if (millis()-lastReconnect>=15000) { lastReconnect=millis(); WiFi.reconnect(); }
     delay(10); return;
