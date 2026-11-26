@@ -24,7 +24,7 @@ int lastGoogleHTTP = 0;
 String lastGoogleReply = "";
 unsigned long lastGoogleCheck = 0;
 
-String request(const String& url, const String& body = "", bool diagnostic = false) {
+String request(const String& url, const String& body, bool diagnostic) {
   WiFiClientSecure client;
   client.setInsecure(); // Bench prototype only; replace with CA validation before deployment.
   HTTPClient http;
@@ -89,7 +89,7 @@ void startPortal() {
 }
 
 void updateFirmware() {
-  String version = request(String(RELEASE) + "version.txt");
+  String version = request(String(RELEASE) + "version.txt", "", false);
   if (!version.length()) return;
   for (unsigned int i=0; i<version.length(); i++)
     if (!isDigit(version[i])) return;
@@ -173,7 +173,7 @@ void loop() {
   if (data=="0|0" || data=="0|1" || data=="1|0" || data=="1|1") {
     digitalWrite(LED_PIN, data[0]=='1'?LOW:HIGH);
     if (data[2]=='1') {
-      request(GOOGLE_URL, "action=clear_ota&token="+token);
+      request(GOOGLE_URL, "action=clear_ota&token="+token, false);
       updateFirmware();
     }
   }
